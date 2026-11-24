@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Token Monitor</title>
+  <script src="/preload.js"></script>
+  <link rel="stylesheet" href="/styles.css?v=11">
+</head>
+<body>
+  <div class="shell">
+    <!-- Compact Top Bar -->
+    <header class="topbar">
+      <div class="title-group">
+        <span id="live-dot" class="live-dot" role="status" aria-label="Live" title="Live"></span>
+        <span id="model-name" class="model-name">Token Monitor</span>
+        <span id="orch-badge" class="orch-badge" hidden></span>
+      </div>
+      <nav class="tabs" role="tablist" aria-label="Monitor view">
+        <button type="button" role="tab" id="tab-btn-conv" class="tab active" aria-selected="true" aria-controls="panel-conv">Current</button>
+        <button type="button" role="tab" id="tab-btn-overview" class="tab" aria-selected="false" aria-controls="panel-overview" tabindex="-1">Overview</button>
+      </nav>
+    </header>
+
+    <main class="main">
+      <!-- Current conversation panel -->
+      <section id="panel-conv" class="panel" role="tabpanel" aria-labelledby="tab-btn-conv">
+        <div id="conv-empty" class="empty-state" hidden>
+          <p class="empty-title" id="empty-title">No token records for this conversation</p>
+          <p class="empty-desc" id="empty-desc">Usage, cache hits, and context size appear after the first model response.</p>
+        </div>
+
+        <div id="conv-body" class="panel-body" hidden>
+          <!-- Unified Single Hero Card -->
+          <section class="card hero-card" aria-label="Current conversation metrics">
+            <div class="ctx-section">
+              <div class="card-head">
+                <div class="ctx-metric-main">
+                  <strong id="hero-ctx-pct" class="hero-val-lg" title="Context usage on the latest main-agent turn">—</strong>
+                  <span id="hero-ctx-frac" class="metric-muted"></span>
+                </div>
+                <label for="ctx-limit-select" class="sr-only">Model context limit</label>
+                <select id="ctx-limit-select" name="ctx-limit" class="panel-select" aria-label="Model context limit" title="Auto estimates the context limit by model family">
+                  <option value="auto">Auto</option>
+                  <option value="128000">128K</option>
+                  <option value="200000">200K</option>
+                  <option value="1000000">1M</option>
+                  <option value="2000000">2M</option>
+                </select>
+              </div>
+
+              <div id="ctx-bar-block" class="ctx-bar-block">
+                <div id="ctx-progress" class="ctx-track" role="progressbar" aria-label="Context window usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                  <span id="ctx-bar-cache" class="ctx-seg-cache"></span>
+                  <span id="ctx-bar-new" class="ctx-seg-new"></span>
+                </div>
+                <div class="ctx-meta-row">
+                  <span id="hero-ctx-remaining" class="metric-muted"></span>
+                  <span id="hero-cache-inline" class="metric-muted"></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="hero-summary-grid">
+              <div class="hero-summary-col" id="cost-wrap">
+                <div class="summary-head">
+                  <span class="card-label" title="Estimated using the rates bundled with the plugin, including applicable cache discounts and a Carbon rate change on December 1, 2026">API est.</span>
+                  <span id="cost-saved" class="summary-meta ok-tone" hidden></span>
+                </div>
+                <strong id="cost-total" class="hero-val">—</strong>
+                <span id="cost-breakdown" class="summary-sub"></span>
+              </div>
+
+              <div class="hero-summary-col" id="vol-wrap">
+                <div class="summary-head">
+                  <span class="card-label" title="New input + cache reads + output">Total tokens</span>
+                  <span id="hero-turns" class="summary-meta">0 turns</span>
+                </div>
+                <strong id="hero-total" class="hero-val">0</strong>
+                <span id="hero-vol-sub" class="summary-sub"></span>
+              </div>
+            </div>
+          </section>
+
+          <!-- Multi-Model / Orchestration Breakdown -->
+          <details id="model-details" class="card subagent-details" hidden>
+            <summary>
+              <span class="subagent-summary-left">
+                <span id="model-details-title" class="subagent-title">Orchestration</span>
+                <span id="model-count" class="count-pill"></span>
+              </span>
+              <span id="model-switches" class="subagent-total"></span>
+            </summary>
+            <div id="model-list" class="subagent-list" role="list" aria-label="Model usage and roles for this conversation"></div>
+          </details>
+
+          <!-- Subagent Accordion -->
+          <details id="subagent-details" class="card subagent-details" hidden>
+            <summary>
+              <span class="subagent-summary-left">
+                <span class="subagent-title">Subagents</span>
+                <span id="subagent-count" class="count-pill"></span>
+              </span>
+              <span id="subagent-total" class="subagent-total"></span>
+            </summary>
+            <div id="subagent-list" class="subagent-list" role="list" aria-label="Subagents by total tokens, highest first"></div>
+          </details>
+
+          <!-- Turn Stream Section -->
+          <section class="stream-section" aria-labelledby="stream-heading">
+            <div class="section-toolbar">
+              <div class="section-title-group">
+                <h2 id="stream-heading" class="section-title">Main turns</h2>
+                <span id="stream-count" class="section-count"></span>
+              </div>
+              <div class="filter-group">
+                <button id="switches-only" type="button" role="switch" aria-checked="false" class="filter-chip" hidden title="Show turns with a model switch or planning handoff">
+                  <span class="chip-dot" aria-hidden="true"></span>
+                  Switches
+                </button>
+                <button id="changes-only" type="button" role="switch" aria-checked="false" class="filter-chip" data-threshold="10000" title="Show turns where context changed by at least 10,000 tokens">
+                  <span class="chip-dot" aria-hidden="true"></span>
+                  Δ ≥10K
+                </button>
+              </div>
+            </div>
+
+            <div class="stream-card">
+              <div class="stream-head">
+                <span title="Tool call means this turn logged a tool request. Reply means no tool call was logged.">Turn / type</span>
+                <span class="col-right" title="Time comes from log intervals and may include tool or subagent waits. TPS is an estimate.">Time / TPS</span>
+                <span class="col-right">Ctx / cache</span>
+              </div>
+              <div id="stream-list" class="stream-list" role="list"></div>
+              <p id="stream-empty" class="list-empty" hidden></p>
+              <button id="load-more" type="button" class="load-more" hidden>Load 50 more turns</button>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- Local usage overview panel -->
+      <section id="panel-overview" class="panel" role="tabpanel" aria-labelledby="tab-btn-overview" hidden>
+        <div class="panel-body">
+          <p id="overview-warning" class="empty-desc warn-tone" role="status" hidden></p>
+          <!-- Today Usage Card -->
+          <section class="card ov-today-card" aria-label="Today">
+            <div class="card-head">
+              <span class="card-label" title="New input + cache reads + output">Today</span>
+              <span id="today-date" class="date-pill"></span>
+            </div>
+            <div class="ctx-metric-row">
+              <div class="ctx-metric-main">
+                <strong id="ov-today-total" class="hero-val-lg">—</strong>
+                <span id="ov-today-cost" class="cost-pill" hidden></span>
+              </div>
+              <span id="ov-today-meta" class="metric-muted"></span>
+            </div>
+            <div class="mini-track ov-mix-track" aria-hidden="true" title="Share of cache reads, new input, and output">
+              <span id="ov-mix-cache" class="mini-seg-cache"></span>
+              <span id="ov-mix-in" class="mini-seg-primary"></span>
+              <span id="ov-mix-out" class="mini-seg-accent"></span>
+            </div>
+            <div class="ov-sub-grid">
+              <div class="ov-sub-col">
+                <span class="card-label" title="Cache reads ÷ (new input + cache reads)">Cache hit rate</span>
+                <div class="ov-sub-val-row">
+                  <strong id="ov-today-rate" class="ov-sub-val">—</strong>
+                  <span id="ov-today-cache" class="kpi-sub"></span>
+                </div>
+              </div>
+              <div class="ov-sub-col">
+                <span class="card-label">New input</span>
+                <div class="ov-sub-val-row">
+                  <strong id="ov-today-in" class="ov-sub-val">—</strong>
+                  <span id="ov-today-out" class="kpi-sub"></span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- All-Time 3-Part Strip -->
+          <section class="perf-strip" aria-label="All time">
+            <div class="perf-item" title="New input + cache reads + output">
+              <div class="perf-label-row">
+                <span class="perf-label">All time</span>
+                <span id="ov-all-convs" class="micro-pill"></span>
+              </div>
+              <strong id="ov-all-total" class="perf-val">—</strong>
+            </div>
+            <div class="perf-item" id="ov-all-cost-wrap" title="Estimated API cost using the rates bundled with the plugin">
+              <span class="perf-label">API est.</span>
+              <strong id="ov-all-cost" class="perf-val ok-tone">—</strong>
+            </div>
+            <div class="perf-item">
+              <span class="perf-label">Cache hit rate</span>
+              <strong id="ov-all-rate" class="perf-val">—</strong>
+            </div>
+          </section>
+
+          <!-- Session List Section -->
+          <section class="stream-section" aria-labelledby="recent-heading">
+            <h2 id="recent-heading" class="sr-only">Conversations</h2>
+            <div class="section-toolbar">
+              <div class="seg-group" role="group" aria-label="Sort conversations">
+                <button type="button" id="sort-btn-recent" class="seg-btn active" data-sort="recent" aria-pressed="true">Recent</button>
+                <button type="button" id="sort-btn-today" class="seg-btn" data-sort="today" aria-pressed="false">Input today</button>
+              </div>
+              <span id="recent-metric" class="section-count">Total / cache</span>
+            </div>
+            <div id="recent-list" class="recent-list"></div>
+            <p id="recent-empty" class="list-empty" hidden></p>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Cursor anchor & right-click context menu for overview sessions -->
+  <span id="menu-anchor" class="menu-anchor" aria-hidden="true"></span>
+  <div id="session-menu" popover="auto" class="context-menu">
+    <div role="menu" aria-label="Conversation actions">
+      <button id="menu-open" type="button" role="menuitem" class="menu-item">Open conversation</button>
+      <button id="menu-delete" type="button" role="menuitem" class="menu-item menu-item-danger">Delete local files…</button>
+    </div>
+  </div>
+
+  <!-- Native modal confirmation for permanent deletion -->
+  <dialog id="delete-dialog" class="confirm-dialog" aria-labelledby="delete-dialog-title">
+    <h1 id="delete-dialog-title" class="dialog-title">Permanently delete local files?</h1>
+    <p id="delete-dialog-target" class="dialog-target"></p>
+    <p class="dialog-desc">This permanently removes local files for this conversation and its subagents from the selected store, including logs and artifacts. The Antigravity conversation index stays intact.</p>
+    <form method="dialog" class="dialog-actions">
+      <button type="submit" value="cancel" class="dialog-btn" autofocus>Cancel</button>
+      <button type="submit" value="delete" class="dialog-btn dialog-btn-danger">Delete files permanently</button>
+    </form>
+  </dialog>
+
+  <div id="action-toast" class="action-toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="/app.js?v=11"></script>
+</body>
+</html>

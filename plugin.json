@@ -1,0 +1,14 @@
+{
+  "name": "token-monitor",
+  "displayName": "Token Monitor",
+  "version": "1.0.3",
+  "description": "Live token usage, estimated context headroom, and local daily history including subagents. Removing local files does not delete the host's conversation records.",
+  "logo": "assets/logo.svg",
+  "suggestedPrompts": [
+    "Open the Token Monitor side pane",
+    "Show my token usage and cache hit rate for this conversation",
+    "Rank today's new input tokens by conversation, including subagent usage"
+  ],
+  "author": "onsraorg",
+  "repository": "https://github.com/onsraorg/token-monitor"
+}
